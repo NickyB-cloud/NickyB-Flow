@@ -1,0 +1,90 @@
+FLOW CYTOMETRY: DENDRITIC-CELL (BMDC) ACTIVATION FIGURES
+=========================================================
+
+What this folder does
+---------------------
+Pools gated bone-marrow-derived dendritic cells (BMDCs) from several
+experiments/mice and plots activation-marker shifts (CD40, CD80, CD86,
+PDL1) for each lipid A preparation (strain x Rf band), with statistics
+against both the vehicle control and a positive control.
+
+Input comes from ../unmix_gate_view: one folder of gated .fcs files per
+mouse/plate (e.g. analysis/Exp4/gated/Exp4_M7_BMDCs), plus a plate-map CSV
+per experiment.
+
+
+Scripts
+-------
+figures_BMDC_activation_v2_GitHub.py   <- use this one
+    Activation figure at one lipid A dose (--dose 1000, the default;
+    any dose_ng value in your plate maps works, e.g. --dose 100). All
+    paths and data-specific settings are in one "USER SETTINGS" block at
+    the top of the script; nothing else needs editing. Mice with no
+    wells at the chosen dose drop out on their own (Exp2 only has
+    1000 ng/mL).
+figures_BMDC_activation_GitHub.py
+    Earlier version (same figure); paths are built from a fixed
+    analysis/<experiment>/... folder layout instead of being set per mouse.
+
+Produces a 2-page PDF: page 1 = one panel per marker stacked
+vertically; page 2 = legend.
+
+
+How the numbers are made
+------------------------
+Per well:  arcsinh (cofactor 150) of every cell's intensity, minus
+           arcsinh of the pooled vehicle-control median, then the median
+           over cells = "MFI shift from vehicle control".
+Bar:       median of the per-well values for each strain x Rf band.
+Red dashed line: positive-control reference (E. coli lipid A), the median
+           across mice of that control's shift, using ONLY positive-control
+           wells at the same dose as the plotted lipid A (dose-matched).
+Stats:     per strain x Rf group with >= 2 wells, a one-sample t-test vs 0
+           (= vehicle control; grey/black stars) and vs the positive-control
+           value (red stars). No multiple-comparison correction.
+           * P<0.10, ** P<0.05, *** P<0.01, **** P<0.001
+
+
+Usage
+-----
+1. Open figures_BMDC_activation_v2_GitHub.py and edit the USER SETTINGS
+   block: one EXPERIMENTS entry per mouse, giving its gated .fcs folder and
+   plate-map CSV (absolute paths, or relative to --base-dir), plus your
+   antibody panel, strains and Rf bands.
+2. Run:
+
+    python figures_BMDC_activation_v2_GitHub.py --dose 1000 \
+        --population BMDCs --out results/plots/BMDC_activation_1000ng.pdf
+
+    python figures_BMDC_activation_v2_GitHub.py --dose 100 \
+        --population BMDCs --out results/plots/BMDC_activation_100ng.pdf
+
+--population also accepts cd11cpos (all CD11c+ cells) or BMDMs
+(macrophage gate); it fills the "{population}" placeholder in each
+gated_dir. If any folder or plate map can't be found, the script stops
+and lists every missing path.
+
+
+Plate-map CSV (one per experiment)
+----------------------------------
+Columns: well, mouse, condition, strain, rf_band, dose_ng, group, ignore, notes
+  group   = lipid_A | vehicle_ctrl | antigen_ctrl | positive_ctrl
+  ignore  = 1 to drop a well (e.g. clogged), else 0
+Example rows:
+  A8,M7,1587.684_1k,1587,0.684,1000,lipid_A,0,
+  E10,M7,DMSO_B,none,none,0,vehicle_ctrl,0,
+Gated .fcs file names must begin with the well ID and a space
+("A8 anything.fcs") so they can be matched to the map.
+
+
+What is in USER SETTINGS
+------------------------
+- EXPERIMENTS: one entry per mouse/plate: mouse_id, legend name, point
+  shape, gated_dir, plate_map, mouse_filter (when several mice share a
+  plate map), failed_markers (antibodies that failed for that mouse; that
+  marker's panel leaves the mouse out), rf_snap (optional Rf relabeling).
+  The original experiments (Exp2 mouse 9, Exp3 mouse 8, Exp4 mice 7 and
+  10) are left in as a worked example, including failed antibodies
+  (Exp3: CD80/CD86) and Rf snapping (EXP2_RF_SNAP).
+- FLUOR_TO_MARKER / ACTIVATION_MARKERS / MARKER_COLORS: your panel.
+- STRAIN_* and CANONICAL_RF: your lipid A preparations and Rf bands.

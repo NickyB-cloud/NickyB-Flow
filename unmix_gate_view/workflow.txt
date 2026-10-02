@@ -1,0 +1,184 @@
+FLOW CYTOMETRY: UNMIXING, GATING AND VIEWING
+=============================================
+
+What this folder does
+---------------------
+Takes raw spectral flow cytometry files (.fcs from a Cytek Aurora-style
+spectral cytometer) through to gated cell populations ready for the figure
+scripts in ../BMDC_costim and ../DDI_Tcell:
+
+  raw control .fcs  -> FSC/SSC gate -> build unmixing matrix
+  raw sample  .fcs  -> FSC/SSC gate -> unmix -> draw gates -> apply gates
+                                                           -> gating QC PDF
+
+Everything reads and writes plain .fcs files (a pure-Python FCS reader/writer
+is built into each script, so no FCS library is needed). Gates are stored as
+small text files you can open and check:
+  polygon gate  = *_hull.txt   one "(x, y)" pair per line
+  threshold     = *.json       {"channel", "value", "direction" (above/below),
+                                "transform" (arcsinh), "cofactor" (150)}
+
+
+Scripts
+-------
+gate_fsc_ssc_GitHub.py
+    FSC-A vs SSC-A gate on a folder (or one file) of .fcs files.
+    --gate hdbscan : finds the main population by clustering and saves its
+                     outline as <file>_hull.txt (good for single-stain
+                     controls / beads).
+    --gate boolean : gates every file with one fixed polygon
+                     (BOOLEAN_HULL_PATH at the top of the script).
+    Writes <file>_gated.fcs plus a PNG of the gate for every file.
+
+fcs_reader_GitHub.py, organizer_GitHub.py
+    Helper modules used by unmixer_GitHub.py. organizer can also be run on
+    its own to check a controls folder (Step 1).
+    organizer decides what each control file is, from file names only:
+      0. names starting with "pooled" = pooled unstained control
+         (pooled viability-dye files count as single stains)
+      1. tags in the file name: "Unstained", "FMO", "(Cells)", "(Beads)"
+      2. plate row: A/E/H = single stain, B/F = FMO, C/D = unstained
+      3. column pairing: A1<->B1, E1<->F1 (FMO inherits its single stain's fluor)
+      4. parent folder name (cells / beads)
+    EDIT FOR YOUR DATA if your control plate is laid out differently.
+
+unmixer_GitHub.py
+    Builds the spectral unmixing matrix from a folder of FSC/SSC-gated
+    controls (single stains, FMOs, unstained; beads and/or cells).
+    Writes delta_table.txt, mixing_matrix.tsv, unmixing_matrix.tsv and an
+    unmixing_QC.pdf into --out.
+
+batch_unmix_GitHub.py
+    Applies unmixing_matrix.tsv to every .fcs in a folder. Output files keep
+    FSC/SSC and replace the detector channels with one column per fluor.
+
+Flow_View_GitHub.py
+    Interactive viewer (Dash web app). Run it, open http://127.0.0.1:8050,
+    paste the path to an unmixed .fcs (optionally an FMO for comparison),
+    pick axes/transform (arcsinh by default) and draw polygon or threshold
+    gates. "Save Gate" writes the *_hull.txt / *.json files used below.
+
+Apply_sequential_gates_GitHub.py
+    Applies ONE gate (--threshold json OR --hull txt with --hull-x/--hull-y)
+    to a folder of .fcs files and writes the passing events to --output.
+    Run it once per gating step, feeding each output folder into the next.
+
+make_gate_qc_pdf_GitHub.py
+    One-page-per-well QC PDF showing every gating step (grey = events going
+    into the gate, color = events kept, gate outline, % retained).
+
+run_sequential_gates_GitHub.sh
+    Optional shortcut for Steps 7 and 8 below: runs all four gates in order
+    and then the QC PDF. Set your paths and channel names in its
+    "EDIT FOR YOUR DATA" block, then: bash run_sequential_gates_GitHub.sh
+
+
+Run order (one experiment, "Exp1")
+----------------------------------
+Paths are examples; run from your project folder.
+
+Step 1. Check your control plate layout with the organizer
+   I always used a consistent plate map of single stains (SS) and FMOs
+   (see the organizer notes above). Follow that plate map, or edit
+   organizer_GitHub.py for your layout. To see how it reads your controls:
+     python organizer_GitHub.py data/Exp1/controls
+   It prints how many SS/FMO pairs it found per group (beads / cells) and
+   which controls are missing a partner.
+
+Step 2. Make an FSC/SSC gate (a *_hull.txt), either way:
+   2a. Draw it in Flow_View_GitHub.py. I used a pooled unstained cells file
+       for cells, or a bead single stain for beads. Set the transform to
+       "Linear" before drawing: gate_fsc_ssc_GitHub.py (Step 3) applies the
+       hull to raw FSC/SSC values.
+   2b. Or let gate_fsc_ssc_GitHub.py find it by clustering one file:
+         python gate_fsc_ssc_GitHub.py --gate hdbscan \
+             --file "data/Exp1/controls/A9 Unstained (Beads).fcs" \
+             --output analysis/Exp1/gates
+       It is currently optimized for beads; for cells adjust the settings
+       under "# HDBSCAN gating with convex hull" (min_cluster_size,
+       min_samples). Check the PNG it writes next to the hull.
+
+Step 3. Gate on FSC/SSC with that hull: BOTH the controls AND the
+   experimental wells
+   Set BOOLEAN_HULL_PATH at the top of gate_fsc_ssc_GitHub.py to your hull,
+   then run it twice (boolean is the default --gate):
+     # controls -> used to build the unmixing matrix (Step 4)
+     python gate_fsc_ssc_GitHub.py \
+         --input data/Exp1/controls --output analysis/Exp1/gated/controls
+     # experimental wells -> the files you unmix and gate (Step 5 onward)
+     python gate_fsc_ssc_GitHub.py \
+         --input data/Exp1/samples  --output analysis/Exp1/gated/Exp1_cells
+   (Alternative for the wells: Apply_sequential_gates_GitHub.py --hull
+    <hull> --hull-x FSC-A --hull-y SSC-A --transform linear.)
+
+Step 4. Build the unmixing matrix from the FSC/SSC-gated controls
+     python unmixer_GitHub.py analysis/Exp1/gated/controls \
+         --out results/unmixing/Exp1
+   Check results/unmixing/Exp1/unmixing_QC.pdf before moving on.
+   Cells-only or beads-only controls work too; no extra option is needed.
+
+Step 5. Unmix the FSC/SSC-gated experimental wells with that matrix
+     python batch_unmix_GitHub.py \
+         --matrix results/unmixing/Exp1/unmixing_matrix.tsv \
+         --input  analysis/Exp1/gated/Exp1_cells --output results/unmixed/Exp1
+
+Step 6. Draw your gates in Flow_View_GitHub.py on a representative unmixed
+   well, WITH ARCSINH ON (the default):
+     python Flow_View_GitHub.py      (then open http://127.0.0.1:8050)
+   Example sequence for bone-marrow-derived dendritic cells:
+     viability dye (threshold) -> CD11c (threshold)
+       -> MHC-II vs CD11b polygons (dendritic cells / macrophages)
+   Threshold gates are always saved as arcsinh, so draw them with arcsinh
+   on. A polygon can be drawn on raw intensities instead (transform
+   "Linear") if you then apply it with --transform linear in Step 7.
+
+Step 7. Apply the gates from Step 6 in order with
+   Apply_sequential_gates_GitHub.py (your *_hull.txt and *.json files):
+     python Apply_sequential_gates_GitHub.py --input results/unmixed/Exp1 \
+         --output analysis/Exp1/gated/Exp1_live \
+         --threshold analysis/Exp1/gates/LD_gate_threshold.json
+     python Apply_sequential_gates_GitHub.py --input analysis/Exp1/gated/Exp1_live \
+         --output analysis/Exp1/gated/Exp1_cd11cpos \
+         --threshold analysis/Exp1/gates/CD11cpos_gate_threshold.json
+     python Apply_sequential_gates_GitHub.py --input analysis/Exp1/gated/Exp1_cd11cpos \
+         --output analysis/Exp1/gated/Exp1_BMDCs \
+         --hull analysis/Exp1/gates/BMDCs_gate_hull.txt --hull-x PERCP --hull-y APC
+     (and the same with the BMDMs hull -> Exp1_BMDMs)
+   --hull-x/--hull-y must be the x/y channels the polygon was drawn on in
+   Flow_View (here x = MHC-II on PERCP, y = CD11b on APC).
+
+Step 8. Make the gating QC PDF
+     python make_gate_qc_pdf_GitHub.py \
+         --pre-gate results/unmixed/Exp1 \
+         --post-live analysis/Exp1/gated/Exp1_live \
+         --post-cd11c analysis/Exp1/gated/Exp1_cd11cpos \
+         --post-bmdcs analysis/Exp1/gated/Exp1_BMDCs \
+         --post-bmdms analysis/Exp1/gated/Exp1_BMDMs \
+         --ld-threshold analysis/Exp1/gates/LD_gate_threshold.json \
+         --cd11c-threshold analysis/Exp1/gates/CD11cpos_gate_threshold.json \
+         --bmdcs-hull analysis/Exp1/gates/BMDCs_gate_hull.txt \
+         --bmdms-hull analysis/Exp1/gates/BMDMs_gate_hull.txt \
+         --cd11c-channel BUV395 --mhcii-channel PERCP \
+         --out results/plots/Exp1_gating_QC.pdf
+
+Steps 7-8 together: edit the "EDIT FOR YOUR DATA" block in
+   run_sequential_gates_GitHub.sh, then
+     bash run_sequential_gates_GitHub.sh
+
+Step 9. Make figures with the ../BMDC_costim or ../DDI_Tcell scripts,
+   pointing them at the gated population folders.
+
+
+What to change for your own data
+--------------------------------
+- Channel names differ between instruments and panels. Check yours with
+  Flow_View_GitHub.py, then set --hull-x/--hull-y, --cd11c-channel,
+  --mhcii-channel and the threshold JSON "channel".
+- The QC scripts label panels for a dendritic-cell panel (viability, CD11c,
+  MHC-II vs CD11b on APC). Other panels need the labels/channels edited.
+- Control file naming / plate layout: see organizer notes above.
+- gate_fsc_ssc_GitHub.py --gate boolean: set BOOLEAN_HULL_PATH.
+- arcsinh cofactor is 150 throughout. A polygon's coordinates are saved in
+  whatever scale Flow_View was showing, so they must match the script that
+  applies them: gate_fsc_ssc_GitHub.py = linear; Apply_sequential_gates'
+  --transform (default arcsinh; use --transform linear for a linear hull).

@@ -1,0 +1,8 @@
+# Python 3.14 (tested with 3.14.6). Install into a virtual environment:
+#   python3 -m venv venv
+#   venv/bin/pip install -r requirements.txt
+# Versions are the ones used to make the original figures.
+numpy==2.4.4
+pandas==2.3.3
+matplotlib==3.10.8
+scipy==1.17.1

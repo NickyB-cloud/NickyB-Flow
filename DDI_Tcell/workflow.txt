@@ -1,0 +1,62 @@
+FLOW CYTOMETRY: T-CELL PROLIFERATION (DDI) FIGURES
+==================================================
+
+What this folder does
+---------------------
+Measures antigen-specific T-cell proliferation (OT-II T cells labelled
+with CellTrace Violet, CTV, co-cultured with lipid A-treated dendritic
+cells) and plots it as a Density Difference Integral (DDI) per well.
+
+DDI, per mouse x condition x replicate (normally one well):
+  1. arcsinh (cofactor 150) of every cell's CTV intensity
+  2. histogram of those cells minus the vehicle-control histogram (all
+     vehicle wells in the folder pooled together)
+     (both normalised to probability, fixed bins from -5 to 12)
+  3. magnitude = positive area of that difference; sign = + if the well's
+     median CTV is lower than the vehicle's (cells divided more =
+     proliferation), - otherwise.  Range -1 .. +1, 0 = same as vehicle.
+
+Input: a folder of viability-gated .fcs files from ../unmix_gate_view
+(Apply_sequential_gates_GitHub.py), optionally with a CTV threshold gate.
+
+
+Script
+------
+figures_TcellProlif_GitHub.py
+  Page 1 (two versions):  DDI per well, x = Rf band, color = strain,
+                          shape = mouse, bar = median; antigen-control and
+                          positive-control DDI drawn as reference lines.
+     version 1: one-sample t-test of each strain x Rf group vs the
+                antigen-control (OVA) DDI
+     version 2: within-strain one-way ANOVA across Rf bands (gate P<0.10),
+                then pairwise Welch t-tests shown as brackets
+     No multiple-comparison correction.
+     * P<0.10, ** P<0.05, *** P<0.01, **** P<0.001
+  Pages 2+:  one page per mouse, a grid of vehicle-subtracted CTV
+             histograms (residuals) per condition.
+
+
+Usage
+-----
+    python figures_TcellProlif_GitHub.py \
+        --data analysis/Tcell/gated/DMSO_live \
+        --out  results/plots/Tcell_figures.pdf \
+        [--ctv-gate analysis/Tcell/gates/CTV_gate_threshold.json]
+
+
+File naming (no plate map is used)
+----------------------------------
+Well metadata comes from the .fcs file name:
+    "<well> <mouse> <condition>[A|B|C]_Experiment.fcs"
+    E1 M7 381_0.85_Experiment.fcs    strain 381, Rf 0.85
+    E10 M7 dmso_Experiment.fcs       vehicle control
+    F1 M7 OVA_Experiment.fcs         antigen control
+    G1 M7 EC_store_Experiment.fcs    positive control
+An optional trailing A/B/C on the condition marks replicate wells.
+
+
+What to change for your own data (marked "EDIT FOR YOUR DATA" in the code)
+--------------------------------------------------------------------------
+- CTV_CHANNEL: the CTV column name in your .fcs files.
+- Strain IDs, colors, labels and mouse marker shapes (CONSTANTS block).
+- parse_tcell_filename() if your files are named differently.

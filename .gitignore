@@ -1,0 +1,21 @@
+# macOS / editor clutter
+.DS_Store
+._*
+__pycache__/
+*.pyc
+
+# virtual environments
+venv/
+env/
+.venv/
+
+# never commit data or outputs
+*.fcs
+*.xls
+*.xlsx
+*.eds
+*.csv
+*.pdf
+*.png
+*.docx
+
